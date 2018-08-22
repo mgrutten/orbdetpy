@@ -51,28 +51,27 @@ public class PropUtil implements OrdinaryDifferentialEquation
     private ODEIntegrator ode;
     private Exception except;
 	private Boolean dynamicMC;
-	private double beta;
+	private double[] beta;
 
-    public PropUtil(AbsoluteDate e, double m, Frame r, ForceModel[] f,
-		    Boolean dmc) throws Exception
+    public PropUtil(AbsoluteDate e, double m, Frame r, ForceModel[] f, double[] b)
+	throws Exception
     {
 	epoch = e;
 	mass = m;
 	frame = r;
 	forces = f;
-	dynamicMC = dmc;
-	if (dmc){
-		stadim = 9;
-		beta = .1;
-	}
-	else{
-		stadim = 6;
-		beta = 0;
-	}
+	stadim = 6 + b.length;
+	beta = b;
 	ode = new DormandPrince853Integrator(1E-3, 300.0, 1E-14, 1E-12);
 	params = new ArrayList<>();
 	for (int i = 0; i < forces.length; i++)
 	    params.add(forces[i].getParameters());
+    }
+
+    public PropUtil(AbsoluteDate e, double m, Frame r, ForceModel[] f)
+	throws Exception
+    {
+	this(e,m,r,f,new double[0]);
     }
 
     public static SolidTides solidtides(Frame bdf, double ae, double mu,
@@ -130,13 +129,13 @@ public class PropUtil implements OrdinaryDifferentialEquation
 		Xdot[i+3] = acc.getX();
 		Xdot[i+4] = acc.getY();
 		Xdot[i+5] = acc.getZ();
-		if(dynamicMC){
+		if(beta.length == 3){
 			Xdot[i+3] += X[i+6];
 			Xdot[i+4] += X[i+7];
 			Xdot[i+5] += X[i+8];
-			Xdot[i+6] = -beta * X[i+6];
-			Xdot[i+7] = -beta * X[i+7];
-			Xdot[i+8] = -beta * X[i+8];
+			Xdot[i+6] = -beta[0] * X[i+6];
+			Xdot[i+7] = -beta[1] * X[i+7];
+			Xdot[i+8] = -beta[2] * X[i+8];
 		}
 	    }
 	}

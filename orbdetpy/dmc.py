@@ -1,4 +1,4 @@
-# dmc-ukf.py - Unscented Kalman filter implementation with Dynamic Model Compensation.
+# dmc.py - Unscented Kalman filter implementation with Dynamic Model Compensation.
 # Copyright (C) 2018 Shiva Iyer <shiva.iyer AT utexas DOT edu>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -27,14 +27,15 @@ def estimate(meas):
     frame = FramesFactory.getEME2000()
     gsta = stations()
 
-    sdim = 6
+    sdim = 9
     epoch = strtodate(config["Propagation"]["Start"])
     mass = config["SpaceObject"]["Mass"]
-    prop = PropUtil(epoch, mass, frame, forces(True), sdim)
+    sigma = array(config["Estimation"]["DMCSigma"])
+    beta = array(config["Estimation"]["DMCBeta"])
+    prop = PropUtil(epoch, mass, frame, forces(True), beta.tolist())
 
-    X0 = array([config["Propagation"]["InitialState"]]).T
+    X0 = [concatenate([array(config["Propagation"]["InitialState"]).T, zeros(3)])]
     P = diag(config["Estimation"]["Covariance"])
-    Q = diag(config["Estimation"]["ProcessNoise"])
     R = zeros([len(config["Measurements"]), len(config["Measurements"])])
     for i, m in enumerate(config["Measurements"]):
         R[i,i] = config["Measurements"][m]["Error"]**2
@@ -44,8 +45,55 @@ def estimate(meas):
     tofm = 0.0 #Time of Flight m
     wfil = 0.5/sdim #Filter weights
     dt = 30
-    Qst = block([[Q[:3,:3]*dt**2/4, Q[:3,:3]*dt/2],
-                 [Q[:3,:3]*dt/2, Q[:3,:3]]])*dt**2
+
+    Qst_rr = diag(
+        sigma**2 * (
+            dt**3 * reciprocal(3*beta**2) 
+            - reciprocal(beta**3) * dt**2 
+            + reciprocal(beta**4) * dt
+            - reciprocal(2*beta**4) * exp(-beta*dt) * dt
+            + reciprocal(2*beta**5) * (1 - exp(-2*beta*dt))
+            )
+        )
+
+    Qst_rv = diag(
+        sigma**2 * (
+            dt**2 * reciprocal(2*beta**2)
+            - reciprocal(beta**3) * dt
+            + reciprocal(beta**3) * exp(-beta*dt) * dt
+            + reciprocal(beta**4) * (1 - exp(-beta*dt))
+            - reciprocal(2*beta**4) * (1 - exp(-2*beta*dt))
+            )
+        )
+
+    Qst_rw = diag(
+        sigma**2 * (
+            reciprocal(2*beta**3) * (1-exp(-2*beta*dt))
+            - reciprocal(beta**2) * exp(-beta*dt) * dt
+            )
+        )
+
+    Qst_vv = diag(
+        sigma**2*(
+            reciprocal(beta**2) * dt
+            - 2*reciprocal(beta**3) * (1-exp(-beta*dt))
+            + reciprocal(2*beta**3) * (1-exp(-2*beta*dt))
+            )
+        )
+
+    Qst_wv = diag(
+        sigma**2*(
+            reciprocal(2*beta**2) * (1+exp(-2*beta*dt))
+            - reciprocal(beta**2) * exp(-beta*dt)
+            )
+        )
+
+    Qst_ww = diag(sigma**2 * reciprocal(2*beta) * (1-exp(-2*beta*dt)))
+
+    Qst = block([[Qst_rr, Qst_rv, Qst_rw],
+        [Qst_rv, Qst_vv, Qst_wv],
+        [Qst_rw, Qst_wv, Qst_ww]])
+
     sigm = zeros([sdim, 2*sdim])
     supd = zeros([len(config["Measurements"]), 2*sdim])
     results = []

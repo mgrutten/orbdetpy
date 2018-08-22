@@ -20,7 +20,7 @@ import time
 import json
 
 if (len(sys.argv) < 4):
-    print("Usage: python %s config_file measurement_file output_file [EKF|UKF]"
+    print("Usage: python %s config_file measurement_file output_file [EKF|UKF|DMC]"
           % sys.argv[0])
     exit()
 
@@ -31,9 +31,15 @@ from orbdetpy import init
 with open(sys.argv[1], "r") as f:
     init(json.load(f))
 
-if (len(sys.argv) > 4 and sys.argv[4].lower() == "ekf"):
-    filt = "EKF"
-    from orbdetpy.ekf import estimate
+if len(sys.argv) > 4:
+    filt = sys.argv[4].upper()
+    if filt == "EKF":
+        from orbdetpy.ekf import estimate
+    elif filt == "DMC":
+        from orbdetpy.dmc import estimate
+    else:
+        filt = "UKF"
+        from orbdetpy.ukf import estimate
 else:
     filt = "UKF"
     from orbdetpy.ukf import estimate
