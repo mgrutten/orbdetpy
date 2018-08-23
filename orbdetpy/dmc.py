@@ -22,6 +22,7 @@ from numpy.linalg import *
 from orbdetpy import config
 from .orekit import *
 from .utils import *
+import progressbar as pb
 
 def estimate(meas):
     frame = FramesFactory.getEME2000()
@@ -34,7 +35,7 @@ def estimate(meas):
     beta = array(config["Estimation"]["DMCBeta"])
     prop = PropUtil(epoch, mass, frame, forces(True), beta.tolist())
 
-    X0 = [concatenate([array(config["Propagation"]["InitialState"]).T, zeros(3)])]
+    X0 = concatenate((array([config["Propagation"]["InitialState"]]).T, repeat([[0]],3,axis=0)))
     P = diag(config["Estimation"]["Covariance"])
     R = zeros([len(config["Measurements"]), len(config["Measurements"])])
     for i, m in enumerate(config["Measurements"]):
@@ -98,7 +99,7 @@ def estimate(meas):
     supd = zeros([len(config["Measurements"]), 2*sdim])
     results = []
 
-    for midx in range(len(meas) + 1):
+    for midx in pb.progressbar(range(len(meas) + 1)):
         if (midx < len(meas)):
             mea = meas[midx]
             tm, t0 = strtodate(mea["Time"]), tm
