@@ -18,6 +18,8 @@ import sys
 import json
 import numpy
 from datetime import datetime
+import matplotlib
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
 if (len(sys.argv) < 4):
@@ -86,4 +88,4 @@ plt.xlabel("Time [hr]")
 plt.ylabel("%s residual" % key[1])
 plt.suptitle("Post-fit residuals")
 
-plt.show()
+plt.savefig('res')
