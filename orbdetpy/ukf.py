@@ -19,18 +19,17 @@ if __name__ == "__main__":
 
 from numpy import *
 from numpy.linalg import *
-from orbdetpy import config
 from .orekit import *
 from .utils import *
 
-def estimate(meas):
+def estimate(config, meas):
     frame = FramesFactory.getEME2000()
-    gsta = stations()
+    gsta = stations(config)
+    sdim, parm, pest = estparms(config)
 
-    sdim = 6
     epoch = strtodate(config["Propagation"]["Start"])
     mass = config["SpaceObject"]["Mass"]
-    prop = PropUtil(epoch, mass, frame, forces(True))
+    prop = PropUtil(epoch, mass, frame, forces(config, True))
 
     X0 = array([config["Propagation"]["InitialState"]]).T
     P = diag(config["Estimation"]["Covariance"])
@@ -44,11 +43,14 @@ def estimate(meas):
     tofm = 0.0
     wfil = 0.5/sdim
     dt = 30
-    Qst = block([[Q[:3,:3]*dt**2/4, Q[:3,:3]*dt/2],
-                 [Q[:3,:3]*dt/2, Q[:3,:3]]])*dt**2
     sigm = zeros([sdim, 2*sdim])
     supd = zeros([len(config["Measurements"]), 2*sdim])
     results = []
+    Qst = block([[Q[:3,:3]*dt**2/4, Q[:3,:3]*dt/2],
+                 [Q[:3,:3]*dt/2, Q[:3,:3]]])*dt**2
+    if (sdim > 6):
+        Qst = pad(Qst, ((0, sdim - 6), (0, sdim - 6)),
+                  "constant", constant_values = 0)
 
     for midx in range(len(meas) + 1):
         if (midx < len(meas)):
@@ -70,6 +72,11 @@ def estimate(meas):
         for i in range(sdim):
             sigm[:,[i]] = xhat + sqrP[:,[i]]
             sigm[:,[sdim+i]] = xhat - sqrP[:,[i]]
+            if (sdim > 6):
+                sigm[6:,[i]] = fmin(fmax(sigm[6:,[i]],
+                                         parm[:,[0]]), parm[:,[1]])
+                sigm[6:,[sdim+i]] = fmin(fmax(sigm[6:,[sdim+i]],
+                                              parm[:,[0]]), parm[:,[1]])
 
         sppr = array([prop.propagate(t0.durationFrom(epoch) - tof0,
                                      sigm.ravel(order = "F").tolist(),
@@ -81,13 +88,28 @@ def estimate(meas):
 
         raw, obs = [], []
         for key, val in config["Measurements"].items():
-            raw.append(mea[key])
             if (key == "Range"):
+                raw.append(mea[key])
                 obs.append(Range(gsta[mea["Station"]], tm, mea[key],
                                  val["Error"], 1.0, val["TwoWay"]))
             elif (key == "RangeRate"):
+                raw.append(mea[key])
                 obs.append(RangeRate(gsta[mea["Station"]], tm, mea[key],
                                      val["Error"], 1.0, val["TwoWay"]))
+            elif (key in ["Azimuth", "Elevation"]):
+                raw.extend([mea["Azimuth"], mea["Elevation"]])
+                obs.append(AngularAzEl(gsta[mea["Station"]], tm, raw,
+                                       [config["Measurements"]["Azimuth"]["Error"],
+                                        config["Measurements"]["Elevation"]["Error"]],
+                                       [1.0, 1.0]))
+                break
+            elif (key in ["RightAscension", "Declination"]):
+                raw.extend([mea["RightAscension"], mea["Declination"]])
+                obs.append(AngularRaDec(gsta[mea["Station"]], frame, tm, raw,
+                                        [config["Measurements"]["RightAscension"]["Error"],
+                                         config["Measurements"]["Declination"]["Error"]],
+                                        [1.0, 1.0]))
+                break
 
         Ppre = Qst.copy()
         tmlt = AbsoluteDate(tm, -tofm)
@@ -100,7 +122,10 @@ def estimate(meas):
                 Vector3D(sppr[3,i], sppr[4,i], sppr[5,i])),
                 frame, tmlt, Constants.EGM96_EARTH_MU), mass)]
             for j, o in enumerate(obs):
-                supd[j,i] = o.estimate(1, 1, ssta).getEstimatedValue()[0]
+                fitv = o.estimate(1, 1, ssta).getEstimatedValue()
+                supd[j,i] = fitv[0]
+                if (len(fitv) == 2):
+                    supd[1,i] = fitv[1]
 
         Pyy = R.copy()
         Pxy = zeros([sdim, len(config["Measurements"])])
@@ -122,8 +147,15 @@ def estimate(meas):
         res["EstimatedCovariance"] = P.tolist()
         res["InnovationCovariance"] = Pyy.tolist()
         for i, m in enumerate(config["Measurements"]):
-            res["PreFit"][m] = yhatpre[i,0]
-            res["PostFit"][m] = obs[i].estimate(1, 1, ssta).getEstimatedValue()[0]
+            fitv = obs[i].estimate(1, 1, ssta).getEstimatedValue()
+            if (len(fitv) == 2):
+                for ii, mm in enumerate(config["Measurements"]):
+                    res["PreFit"][mm] = yhatpre[ii,0]
+                    res["PostFit"][mm] = fitv[ii]
+                break
+            else:
+                res["PreFit"][m] = yhatpre[i,0]
+                res["PostFit"][m] = fitv[0]
         results.append(res)
 
     return({"Estimation" : results,

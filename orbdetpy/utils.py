@@ -17,10 +17,10 @@
 if __name__ == "__main__":
     exit()
 
-from orbdetpy import config
+from numpy import array
 from .orekit import *
 
-def forces(pointmass):
+def forces(config, pointmass):
     ut1scale = TimeScalesFactory.getUT1(IERSConventions.IERS_2010, False)
 
     fmod = []
@@ -47,7 +47,7 @@ def forces(pointmass):
             config["Drag"]["ExpRho0"], config["Drag"]["ExpH0"],
             config["Drag"]["ExpHScale"]),
             IsotropicDrag(config["SpaceObject"]["Area"],
-            config["Drag"]["Coeff"]["Value"])))
+            config["Drag"]["Coefficient"]["Value"])))
 
     if (config["SolidTides"]["Sun"] or config["SolidTides"]["Moon"]):
         fmod.append(PropUtil.solidtides(_itrf,
@@ -67,8 +67,9 @@ def forces(pointmass):
             149597870000.0, 4.56E-6, CelestialBodyFactory.getSun(),
             Constants.WGS84_EARTH_EQUATORIAL_RADIUS,
             IsotropicRadiationClassicalConvention(
-            config["SpaceObject"]["Area"], config["SpaceObject"]["Cabs"],
-            config["SpaceObject"]["Cspec"])))
+            config["SpaceObject"]["Area"],
+            config["RadiationPressure"]["Cabsorption"]["Value"],
+            config["RadiationPressure"]["Cspecular"]["Value"])))
 
     mans = config.get("Maneuvers", [])
     for man in mans:
@@ -78,7 +79,7 @@ def forces(pointmass):
 
     return(fmod)
 
-def stations():
+def stations(config):
     gsta = {}
     dt = strtodate("2000-01-01T12:00:00Z")
     for k, v in config["Stations"].items():
@@ -91,6 +92,24 @@ def stations():
         gsta[k].getPolarOffsetYDriver().setReferenceDate(dt)
 
     return(gsta)
+
+def estparms(config):
+    sdim = 6
+    parm, pest = [], []
+    grps = [["Drag", "Coefficient", DragSensitive.DRAG_COEFFICIENT],
+            ["RadiationPressure", "Cabsorption",
+             RadiationSensitive.ABSORPTION_COEFFICIENT],
+            ["RadiationPressure", "Cspecular",
+             RadiationSensitive.REFLECTION_COEFFICIENT]]
+    for g in grps:
+        c = config[g[0]][g[1]]
+        if (c["Estimation"].lower() != "estimate"):
+            continue
+        sdim += 1
+        parm.append([c["Min"], c["Max"], c["Value"]])
+        pest.append(g[2])
+
+    return(sdim, array(parm), pest) 
 
 def strtodate(s):
     return(AbsoluteDate(DateTimeComponents.parseDateTime(String(s)),

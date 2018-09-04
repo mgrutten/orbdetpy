@@ -18,7 +18,6 @@ if __name__ == "__main__":
     exit()
 
 import jnius
-from orbdetpy import config
 from .orekit import *
 from .utils import *
 
@@ -27,68 +26,116 @@ class observer(jnius.PythonJavaClass):
     __javainterfaces__ = [
         "org/orekit/estimation/sequential/KalmanObserver"]
 
-    def __init__(self, m):
+    def __init__(self, conf, m, par):
         super().__init__()
+        self.config = conf
         self.meas = m
+        self.pest = par
         self.results = []
+        self.angles = ["Azimuth", "Elevation",
+                       "RightAscension", "Declination"]
 
     @jnius.java_method(
         "(Lorg/orekit/estimation/sequential/KalmanEstimation;)V")
     def evaluationPerformed(self, est):
-        n = (est.getCurrentMeasurementNumber() - 1)//2
+        keys = list(self.config["Measurements"].keys())
+        if (keys[0] in self.angles):
+            n = est.getCurrentMeasurementNumber() - 1
+        else:
+            n = (est.getCurrentMeasurementNumber() - 1)//len(keys)
+
         if (len(self.results) <= n):
-            k = list(config["Measurements"].keys())[0]
+            k = keys[0]
             self.results.append({"Time" : self.meas[n]["Time"],
                                  "PreFit" : {}, "PostFit" : {}})
         else:
-            k = list(config["Measurements"].keys())[1]
+            k = keys[1]
 
         res = self.results[n]
-        res["PreFit"][k] = est.getPredictedMeasurement().getEstimatedValue()[0]
-        res["PostFit"][k] = est.getCorrectedMeasurement().getEstimatedValue()[0]
+        fitv = est.getPredictedMeasurement().getEstimatedValue()
+        if (keys[0] in self.angles):
+            res["PreFit"][keys[0]] = fitv[0]
+            res["PreFit"][keys[1]] = fitv[1]
+        else:
+            res["PreFit"][k] = fitv[0]
+
+        fitv = est.getCorrectedMeasurement().getEstimatedValue()
+        if (keys[0] in self.angles):
+            res["PostFit"][keys[0]] = fitv[0]
+            res["PostFit"][keys[1]] = fitv[1]
+        else:
+            res["PostFit"][k] = fitv[0]
+
         res["EstimatedState"] = pvtolist(est.getPredictedSpacecraftStates()[0].getPVCoordinates())
+        plst = est.getEstimatedPropagationParameters().getDrivers().toArray() + \
+               est.getEstimatedMeasurementsParameters().getDrivers().toArray()
+        for p in self.pest:
+            for l in plst:
+                if l.getName() == p:
+                    res["EstimatedState"].append(l.getValue())
         res["EstimatedCovariance"] = est.getPhysicalEstimatedCovarianceMatrix().getData()
 
-def estimate(meas):
+def estimate(config, meas):
+    frame = FramesFactory.getEME2000()
+    gsta = stations(config)
+
     X0 = config["Propagation"]["InitialState"]
     X0 = CartesianOrbit(PVCoordinates(Vector3D(X0[:3]), Vector3D(X0[3:6])),
-                        FramesFactory.getEME2000(),
-                        strtodate(config["Propagation"]["Start"]),
+                        frame, strtodate(config["Propagation"]["Start"]),
                         Constants.EGM96_EARTH_MU)
 
     prop = NumericalPropagatorBuilder(X0, DormandPrince853IntegratorBuilder(
         1E-3, 300.0, 1.0), PositionAngle.MEAN, 10.0)
     prop.setMass(config["SpaceObject"]["Mass"])
-    for f in forces(False):
+    for f in forces(config, False):
         prop.addForceModel(f)
+
+    sdim, parm, pest = estparms(config)
+    plst = prop.getPropagationParametersDrivers()
+    for n, l in zip(pest, parm.tolist()):
+        pdrv = ParameterDriver(String(n), l[2], 1.0, l[0], l[1])
+        pdrv.setSelected(True)
+        plst.add(pdrv)
 
     build = KalmanEstimatorBuilder()
     build.addPropagationConfiguration(prop, ConstantProcessNoise(
         DiagonalMatrix(config["Estimation"]["Covariance"]),
         DiagonalMatrix(config["Estimation"]["ProcessNoise"])))
-    filt = build.build()
 
-    gsta = stations()
-    cbak = observer(meas)
+    cbak = observer(config, meas, pest)
+    filt = build.build()
     filt.setObserver(cbak)
 
     allobs = ArrayList()
-    for m in meas:
-        tm = strtodate(m["Time"])
-        for k,v in config["Measurements"].items():
-            if (k == "Range"):
-                obs = Range(gsta[m["Station"]], tm, m[k],
-                            v["Error"], 1.0, v["TwoWay"])
-            elif (k == "RangeRate"):
-                obs = RangeRate(gsta[m["Station"]], tm, m[k],
-                                v["Error"], 1.0, v["TwoWay"])
-
-            obs.setEnabled(v["Enabled"])
-            allobs.add(obs)
+    for mea in meas:
+        tm = strtodate(mea["Time"])
+        for key, val in config["Measurements"].items():
+            if (key == "Range"):
+                allobs.add(Range(gsta[mea["Station"]], tm, mea[key],
+                                 val["Error"], 1.0, val["TwoWay"]))
+            elif (key == "RangeRate"):
+                allobs.add(RangeRate(gsta[mea["Station"]], tm, mea[key],
+                                     val["Error"], 1.0, val["TwoWay"]))
+            elif (key in ["Azimuth", "Elevation"]):
+                allobs.add(AngularAzEl(gsta[mea["Station"]], tm,
+                                       [mea["Azimuth"], mea["Elevation"]],
+                                       [config["Measurements"]["Azimuth"]["Error"],
+                                        config["Measurements"]["Elevation"]["Error"]],
+                                       [1.0, 1.0]))
+                break
+            elif (key in ["RightAscension", "Declination"]):
+                allobs.add(AngularRaDec(gsta[mea["Station"]], frame, tm,
+                                        [mea["RightAscension"], mea["Declination"]],
+                                        [config["Measurements"]["RightAscension"]["Error"],
+                                         config["Measurements"]["Declination"]["Error"]],
+                                        [1.0, 1.0]))
+                break
 
     est = filt.processMeasurements(allobs)[0]
-    pvend = pvtolist(est.getPVCoordinates(strtodate(config["Propagation"]["End"]),
-                                          FramesFactory.getEME2000()))
+    pvend = pvtolist(est.getPVCoordinates(
+        strtodate(config["Propagation"]["End"]), frame))
+    if (sdim > 6):
+        pvend.extend(cbak.results[-1]["EstimatedState"][6:])
 
     return({"Estimation" : cbak.results,
             "Propagation" : {"Time" : config["Propagation"]["End"],
