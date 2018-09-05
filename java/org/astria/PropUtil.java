@@ -48,27 +48,29 @@ public class PropUtil implements OrdinaryDifferentialEquation
     private ForceModel[] forces;
     private int stadim;
     private int vecdim;
+    private String[] params;
     private ODEIntegrator ode;
     private Exception except;
 	private Boolean dynamicMC;
 	private double[] beta;
 
-    public PropUtil(AbsoluteDate e, double m, Frame r, ForceModel[] f, double[] b)
+    public PropUtil(AbsoluteDate e, double m, Frame r, ForceModel[] f, double[] b, String[] estparam)
 	throws Exception
     {
 	epoch = e;
 	mass = m;
 	frame = r;
 	forces = f;
+	params = estparam;
 	stadim = 6 + b.length;
 	beta = b;
 	ode = new DormandPrince853Integrator(1E-3, 300.0, 1E-14, 1E-12);
     }
 
-    public PropUtil(AbsoluteDate e, double m, Frame r, ForceModel[] f)
+    public PropUtil(AbsoluteDate e, double m, Frame r, ForceModel[] f, String[] estparam)
 	throws Exception
     {
-	this(e,m,r,f,new double[0]);
+	this(e,m,r,f,new double[0], estparam);
     }
 
     public static SolidTides solidtides(Frame bdf, double ae, double mu,

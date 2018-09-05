@@ -29,7 +29,7 @@ def estimate(config, meas):
 
     epoch = strtodate(config["Propagation"]["Start"])
     mass = config["SpaceObject"]["Mass"]
-    prop = PropUtil(epoch, mass, frame, forces(config, True))
+    prop = PropUtil(epoch, mass, frame, forces(config, True), pest)
 
     X0 = array([config["Propagation"]["InitialState"]]).T
     P = diag(config["Estimation"]["Covariance"])
