@@ -32,12 +32,12 @@ if (len(sys.argv) < 3):
 with open(sys.argv[1], "r") as f:
     cfg = json.load(f)
 with open(sys.argv[2], "r") as f:
-    out = json.load(f)["Estimation"]
+    out = json.load(f)
 
 mu = 398600.4418
 tstamp, hvec, hmag, ener, alt, ecc, inc, accel = [], [], [], [], [], [], [], []
 for o in out:
-    rv = [x/1000.0 for x in o["EstimatedState"]]
+    rv = [x/1000.0 for x in o["State"]]
     r, v = norm(rv[:3]), norm(rv[3:])
     h = numpy.cross(rv[:3], rv[3:6])
     hn = norm(h)
