@@ -19,21 +19,21 @@ if __name__ == "__main__":
 
 from numpy import *
 from numpy.linalg import *
-from orbdetpy import config
 from .orekit import *
 from .utils import *
 import progressbar as pb
 
-def estimate(meas):
+def estimate(config, meas):
     frame = FramesFactory.getEME2000()
-    gsta = stations()
+    gsta = stations(config)
+    sdim, parm, pest = estparms(config)
 
     sdim = 9
     epoch = strtodate(config["Propagation"]["Start"])
     mass = config["SpaceObject"]["Mass"]
-    sigma = array(config["Estimation"]["DMCSigma"])
-    beta = array(config["Estimation"]["DMCBeta"])
-    prop = PropUtil(epoch, mass, frame, forces(True), beta.tolist())
+    sigma = array(config["Estimation"]["DMC"]["Sigma"])
+    tau = array(config["Estimation"]["DMC"]["Tau"])
+    prop = PropUtil(epoch, mass, frame, forces(config, True), tau.tolist(), pest)
 
     X0 = concatenate((array([config["Propagation"]["InitialState"]]).T, repeat([[0]],3,axis=0)))
     P = diag(config["Estimation"]["Covariance"])
@@ -47,53 +47,103 @@ def estimate(meas):
     wfil = 0.5/sdim #Filter weights
     dt = 30
 
-    Qst_rr = diag(
+    #Qst_rr = diag(
+    #    sigma**2 * (
+    #        dt**3 * reciprocal(3*beta**2) 
+    #        - reciprocal(beta**3) * dt**2 
+    #        + reciprocal(beta**4) * dt
+    #        - reciprocal(2*beta**4) * exp(-beta*dt) * dt
+    #        + reciprocal(2*beta**5) * (1 - exp(-2*beta*dt))
+    #        )
+    #    )
+
+    #Qst_rv = diag(
+    #    sigma**2 * (
+    #        dt**2 * reciprocal(2*beta**2)
+    #        - reciprocal(beta**3) * dt
+    #        + reciprocal(beta**3) * exp(-beta*dt) * dt
+    #        + reciprocal(beta**4) * (1 - exp(-beta*dt))
+    #        - reciprocal(2*beta**4) * (1 - exp(-2*beta*dt))
+    #        )
+    #    )
+
+    #Qst_rw = diag(
+    #    sigma**2 * (
+    #        reciprocal(2*beta**3) * (1-exp(-2*beta*dt))
+    #        - reciprocal(beta**2) * exp(-beta*dt) * dt
+    #        )
+    #    )
+
+    #Qst_vv = diag(
+    #    sigma**2*(
+    #        reciprocal(beta**2) * dt
+    #        - 2*reciprocal(beta**3) * (1-exp(-beta*dt))
+    #        + reciprocal(2*beta**3) * (1-exp(-2*beta*dt))
+    #        )
+    #    )
+
+    #Qst_wv = diag(
+    #    sigma**2*(
+    #        reciprocal(2*beta**2) * (1+exp(-2*beta*dt))
+    #        - reciprocal(beta**2) * exp(-beta*dt)
+    #        )
+    #    )
+
+    #Qst_ww = diag(sigma**2 * reciprocal(2*beta) * (1-exp(-2*beta*dt)))
+
+    #Qst = block([[Qst_rr, Qst_rv, Qst_rw],
+    #    [Qst_rv, Qst_vv, Qst_wv],
+    #    [Qst_rw, Qst_wv, Qst_ww]])
+
+    qrr = diag(
         sigma**2 * (
-            dt**3 * reciprocal(3*beta**2) 
-            - reciprocal(beta**3) * dt**2 
-            + reciprocal(beta**4) * dt
-            - reciprocal(2*beta**4) * exp(-beta*dt) * dt
-            + reciprocal(2*beta**5) * (1 - exp(-2*beta*dt))
-            )
+            1/3 * tau**2 * dt**3
+            - tau**3 * dt**2
+            + tau**4 * dt * (1 - 1/2*exp(-dt*reciprocal(tau)) )
+            + 1/2 * tau**5 * (1 - exp(-2*dt*reciprocal(tau)))
         )
+    )
 
-    Qst_rv = diag(
+    qrv = diag(
         sigma**2 * (
-            dt**2 * reciprocal(2*beta**2)
-            - reciprocal(beta**3) * dt
-            + reciprocal(beta**3) * exp(-beta*dt) * dt
-            + reciprocal(beta**4) * (1 - exp(-beta*dt))
-            - reciprocal(2*beta**4) * (1 - exp(-2*beta*dt))
-            )
+        1/2 * tau**2 * dt**2
+        - tau**3 * dt * (1-exp(-dt*reciprocal(tau)))
+        + tau**4 * (
+            1/2
+            - exp(-dt*reciprocal(tau))
+            + 1/2*exp(-2*dt*reciprocal(tau)))
         )
+    )
 
-    Qst_rw = diag(
+    qrw = diag(
         sigma**2 * (
-            reciprocal(2*beta**3) * (1-exp(-2*beta*dt))
-            - reciprocal(beta**2) * exp(-beta*dt) * dt
-            )
+        1/2 * tau**3 * (1 - exp(-2*dt*reciprocal(tau)))
+        - tau**2 * dt * exp(-dt*reciprocal(tau))
         )
+    )
 
-    Qst_vv = diag(
-        sigma**2*(
-            reciprocal(beta**2) * dt
-            - 2*reciprocal(beta**3) * (1-exp(-beta*dt))
-            + reciprocal(2*beta**3) * (1-exp(-2*beta*dt))
-            )
+    qvv = diag(
+        sigma**2 * (
+        tau**2 * dt
+        + tau**3 * (
+                -3/2
+                + 2 * exp(-dt*reciprocal(tau))
+                - 1/2 * exp(-2*dt*reciprocal(tau)))
         )
+    )
 
-    Qst_wv = diag(
-        sigma**2*(
-            reciprocal(2*beta**2) * (1+exp(-2*beta*dt))
-            - reciprocal(beta**2) * exp(-beta*dt)
-            )
+    qvw = diag(
+        sigma**2 * tau**2 * (
+        1/2 * (1 + exp(-2*dt*reciprocal(tau)))
+        - exp(-dt*reciprocal(tau))
         )
+    )
 
-    Qst_ww = diag(sigma**2 * reciprocal(2*beta) * (1-exp(-2*beta*dt)))
+    qww = diag(1/2 * sigma**2 * tau * (1 - exp(-2*dt*reciprocal(tau))))
 
-    Qst = block([[Qst_rr, Qst_rv, Qst_rw],
-        [Qst_rv, Qst_vv, Qst_wv],
-        [Qst_rw, Qst_wv, Qst_ww]])
+    Qst = block([[qrr, qrv, qrw],
+                 [qrv, qvv, qvw],
+                 [qrw, qvw, qww]])
 
     sigm = zeros([sdim, 2*sdim])
     supd = zeros([len(config["Measurements"]), 2*sdim])

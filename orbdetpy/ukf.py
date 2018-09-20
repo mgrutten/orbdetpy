@@ -21,9 +21,11 @@ from numpy import *
 from numpy.linalg import *
 from .orekit import *
 from .utils import *
+import progressbar as pb
 
 def estimate(config, meas):
     frame = FramesFactory.getEME2000()
+    itrf = FramesFactory.getITRF(IERSConventions.IERS_2010, True)
     gsta = stations(config)
     sdim, parm, pest = estparms(config)
 
@@ -52,7 +54,7 @@ def estimate(config, meas):
         Qst = pad(Qst, ((0, sdim - 6), (0, sdim - 6)),
                   "constant", constant_values = 0)
 
-    for midx in range(len(meas) + 1):
+    for midx in pb.progressbar(range(len(meas) + 1)):
         if (midx < len(meas)):
             mea = meas[midx]
             tm, t0 = strtodate(mea["Time"]), tm
@@ -146,6 +148,7 @@ def estimate(config, meas):
         res["EstimatedState"] = xhat[:,0].tolist()
         res["EstimatedCovariance"] = P.tolist()
         res["InnovationCovariance"] = Pyy.tolist()
+        res["ECEFPosition"] = ssta[0].getPVCoordinates(itrf).getPosition().toArray()
         for i, m in enumerate(config["Measurements"]):
             fitv = obs[i].estimate(1, 1, ssta).getEstimatedValue()
             if (len(fitv) == 2):

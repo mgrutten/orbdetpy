@@ -21,12 +21,14 @@ from numpy.random import randn
 import jnius
 from .orekit import *
 from .utils import *
+import progressbar as pb
 
 def simulate(config):
     frame = FramesFactory.getEME2000()
     gsta = stations(config)
     tm = strtodate(config["Propagation"]["Start"])
     prend = strtodate(config["Propagation"]["End"])
+    totaltime = prend.durationFrom(tm)
     tstep = config["Propagation"]["Step"]
     X0 = config["Propagation"]["InitialState"]
 
@@ -39,6 +41,7 @@ def simulate(config):
         prop.addForceModel(f)
 
     res = []
+    bar = pb.ProgressBar(max_value=totaltime)
     while True:
         ssta = [prop.propagate(tm)]
         meas = {"Time" : tm.toString() + "Z",
@@ -72,6 +75,7 @@ def simulate(config):
             res.append(meas)
 
         dt = prend.durationFrom(tm)
+        bar.update(totaltime-dt)
         tm = AbsoluteDate(tm, min(dt, tstep))
         if (dt <= 0):
             break

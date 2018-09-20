@@ -52,7 +52,7 @@ public class PropUtil implements OrdinaryDifferentialEquation
     private ODEIntegrator ode;
     private Exception except;
 	private Boolean dynamicMC;
-	private double[] beta;
+	private double[] tau;
 
     public PropUtil(AbsoluteDate e, double m, Frame r, ForceModel[] f, double[] b, String[] estparam)
 	throws Exception
@@ -63,7 +63,7 @@ public class PropUtil implements OrdinaryDifferentialEquation
 	forces = f;
 	params = estparam;
 	stadim = 6 + b.length;
-	beta = b;
+	tau = b;
 	ode = new DormandPrince853Integrator(1E-3, 300.0, 1E-14, 1E-12);
     }
 
@@ -140,13 +140,13 @@ public class PropUtil implements OrdinaryDifferentialEquation
 		Xdot[i+3] = acc.getX();
 		Xdot[i+4] = acc.getY();
 		Xdot[i+5] = acc.getZ();
-		if(beta.length == 3){
+		if(tau.length == 3){
 			Xdot[i+3] += X[i+6];
 			Xdot[i+4] += X[i+7];
 			Xdot[i+5] += X[i+8];
-			Xdot[i+6] = -beta[0] * X[i+6];
-			Xdot[i+7] = -beta[1] * X[i+7];
-			Xdot[i+8] = -beta[2] * X[i+8];
+			Xdot[i+6] = -1/tau[0] * X[i+6];
+			Xdot[i+7] = -1/tau[1] * X[i+7];
+			Xdot[i+8] = -1/tau[2] * X[i+8];
 		}
 	    }
 	}

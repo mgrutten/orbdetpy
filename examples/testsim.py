@@ -33,8 +33,6 @@ from orbdetpy.simdata import simulate
 with open(sys.argv[1], "r") as f:
     config = json.load(f)
 
-print("Simulation start : %s" % time.strftime("%Y-%m-%d %H:%M:%S"))
 res = simulate(config)
 with open(sys.argv[2], "w") as fout:
     json.dump(res, fout, indent = 1)
-print("Simulation end   : %s" % time.strftime("%Y-%m-%d %H:%M:%S"))

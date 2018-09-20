@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 import sys
 import math
 import json
@@ -23,6 +24,12 @@ from datetime import datetime
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from orbdetpy import init
+init()
+from orbdetpy.orekit import *
+from orbdetpy.utils import *
 
 if (len(sys.argv) < 3):
     print("Usage: python %s config_file simulated_data_file"
@@ -35,84 +42,84 @@ with open(sys.argv[2], "r") as f:
     out = json.load(f)
 
 mu = 398600.4418
+mass = cfg["SpaceObject"]["Mass"]
 tstamp, hvec, hmag, ener, alt, ecc, inc, accel = [], [], [], [], [], [], [], []
-for o in out:
-    rv = [x/1000.0 for x in o["State"]]
-    r, v = norm(rv[:3]), norm(rv[3:])
-    h = numpy.cross(rv[:3], rv[3:6])
-    hn = norm(h)
-    a = 1.0/(2.0/r-v*v/mu)
-    e = math.sqrt(1 - hn*hn/(mu*a))
-    i = math.acos(h[2]/hn)*180.0/math.pi
-    #acc = numpy.array(rv[6:])
+ecefList, eciList, velList = [], [], []
+sdim = len(out[0]["State"])
+frame = FramesFactory.getEME2000()
+itrf = FramesFactory.getITRF(IERSConventions.IERS_2010, True)
 
-    tstamp.append(datetime.strptime(o["Time"], "%Y-%m-%dT%H:%M:%S.%fZ"))
-    hvec.append(h)
-    hmag.append(hn)
-    ener.append(v**2/2.0 - mu/r)
-    alt.append(a*(1.0 - e) - 6378.137)
-    ecc.append(e)
-    inc.append(i)
-    #accel.append(acc)
+for o in out:
+    tim = datetime.strptime(o["Time"], "%Y-%m-%dT%H:%M:%S.%fZ")
+    javatim = strtodate(o["Time"])
+    tstamp.append(tim)
+
+    state = o["State"]
+    
+    javaState = SpacecraftState(CartesianOrbit(
+        PVCoordinates(
+            Vector3D(state[0], state[1], state[2]), 
+            Vector3D(state[3], state[4], state[5])),
+        frame, javatim, Constants.EGM96_EARTH_MU), mass)
+    eci = javaState.getPVCoordinates(frame).getPosition().toArray()
+    ecef = javaState.getPVCoordinates(itrf).getPosition().toArray()
+    vel = javaState.getPVCoordinates(itrf).getVelocity().toArray()
+
+    eciList.append(eci)
+    ecefList.append(ecef)
+    velList.append(vel)
 
 hvec = numpy.array(hvec)
 accel = numpy.array(accel)
+eciList = numpy.array(eciList)/1000.0
+ecefList = numpy.array(ecefList)/1000.0
+velList = numpy.array(velList)
 tim = [(t - tstamp[0]).total_seconds()/3600 for t in tstamp]
 
 fig = plt.figure(0)
 plt.subplot(311)
-plt.plot(tim, hvec[:,0], "-b")
+plt.plot(tim, eciList[:,0], "-b")
 plt.xlabel("Time [hr]")
-plt.ylabel("h(x)")
+plt.ylabel("x [km]")
 plt.subplot(312)
-plt.plot(tim, hvec[:,1], "-b")
+plt.plot(tim, eciList[:,1], "-b")
 plt.xlabel("Time [hr]")
-plt.ylabel("h(y)")
+plt.ylabel("y [km]")
 plt.subplot(313)
-plt.plot(tim, hvec[:,2], "-b")
+plt.plot(tim, eciList[:,2], "-b")
 plt.xlabel("Time [hr]")
-plt.ylabel("h(z)")
-plt.suptitle("Components of angular momentum")
-plt.savefig('h')
+plt.ylabel("z [km]")
+plt.suptitle("ECI Position")
+plt.savefig('eci')
 
 fig = plt.figure(1)
-plt.subplot(211)
-plt.plot(tim, hmag, "-b")
+plt.subplot(311)
+plt.plot(tim, ecefList[:,0], "-b")
 plt.xlabel("Time [hr]")
-plt.ylabel("Angular momentum")
-plt.subplot(212)
-plt.plot(tim, ener, "-b")
+plt.ylabel("x [km]")
+plt.subplot(312)
+plt.plot(tim, ecefList[:,1], "-b")
 plt.xlabel("Time [hr]")
-plt.ylabel("Specific energy")
-plt.savefig('E')
+plt.ylabel("y [km]")
+plt.subplot(313)
+plt.plot(tim, ecefList[:,2], "-b")
+plt.xlabel("Time [hr]")
+plt.ylabel("z [km]")
+plt.suptitle("ECEF Position")
+plt.savefig('ecef')
 
 fig = plt.figure(2)
 plt.subplot(311)
-plt.plot(tim, alt, "-b")
+plt.plot(tim, velList[:,0], "-b")
 plt.xlabel("Time [hr]")
-plt.ylabel("Altitude [km]")
+plt.ylabel("v_x [m/s]")
 plt.subplot(312)
-plt.plot(tim, ecc, "-b")
+plt.plot(tim, velList[:,1], "-b")
 plt.xlabel("Time [hr]")
-plt.ylabel("Eccentricity")
+plt.ylabel("v_y [m/s]")
 plt.subplot(313)
-plt.plot(tim, inc, "-b")
+plt.plot(tim, velList[:,2], "-b")
 plt.xlabel("Time [hr]")
-plt.ylabel("Inclination [deg]")
-plt.savefig('angles')
-
-#fig = plt.figure(3)
-#plt.subplot(311)
-#plt.plot(tim, accel[:,0], "-b")
-#plt.xlabel("Time [hr]")
-#plt.ylabel("a(x)")
-#plt.subplot(312)
-#plt.plot(tim, accel[:,1], "-b")
-#plt.xlabel("Time [hr]")
-#plt.ylabel("a(y)")
-#plt.subplot(313)
-#plt.plot(tim, accel[:,2], "-b")
-#plt.xlabel("Time [hr]")
-#plt.ylabel("a(z)")
-#plt.suptitle("Components of Acceleration")
-#plt.savefig('a')
+plt.ylabel("v_z [m/s]")
+plt.suptitle("Velocity")
+plt.savefig('vel')

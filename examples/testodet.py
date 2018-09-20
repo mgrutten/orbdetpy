@@ -45,9 +45,7 @@ else:
 with open(sys.argv[1], "r") as f:
     config = json.load(f)
 
-print("%s start : %s" % (filt, time.strftime("%Y-%m-%d %H:%M:%S")))
 with open(sys.argv[2], "r") as fin:
     res = estimate(config, json.load(fin))
     with open(sys.argv[3], "w") as fout:
         json.dump(res, fout, indent = 1)
-print("%s end   : %s" % (filt, time.strftime("%Y-%m-%d %H:%M:%S")))
