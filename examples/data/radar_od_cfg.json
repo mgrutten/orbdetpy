@@ -114,7 +114,7 @@
 
     "Estimation" :
     {
-	"Covariance" : [1E2, 1E2, 1E2, 1E-2, 1E-2, 1E-2],
+	"Covariance" : [1E1, 1E1, 1E1, 1E-2, 1E-2, 1E-2],
 	"ProcessNoise" : [1E-3, 1E-3, 1E-3, 1E-3, 1E-3]
     }
 }
