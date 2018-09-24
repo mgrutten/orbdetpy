@@ -75,7 +75,7 @@ def forces(config, pointmass):
     for man in mans:
         fmod.append(ConstantThrustManeuver(strtodate(man["Time"]),
             man["Duration"], man["Thrust"], man["Isp"],
-            Vector3D(man["Direction"])))
+            InertialProvider.EME2000_ALIGNED, Vector3D(man["Direction"])))
 
     return(fmod)
 

@@ -87,6 +87,8 @@ ParameterDriversList = autoclass("org.orekit.utils.ParameterDriversList")
 PVCoordinates = autoclass("org.orekit.utils.PVCoordinates")
 TimeStampedPVCoordinates = autoclass("org.orekit.utils.TimeStampedPVCoordinates")
 
+InertialProvider = autoclass("org.orekit.attitudes.InertialProvider")
+
 # Orbdetpy Java utilities class
 PropUtil = autoclass("org.astria.PropUtil")
 
